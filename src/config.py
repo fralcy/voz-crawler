@@ -32,3 +32,15 @@ VOZ_BOX_URL = os.getenv("VOZ_BOX_URL", "https://voz.vn/f/tu-van-cau-hinh.70/")
 THREAD_LIMIT = int(os.getenv("THREAD_LIMIT", 200))
 REQUEST_DELAY = float(os.getenv("REQUEST_DELAY", 2))
 HEADLESS_BROWSER = os.getenv("HEADLESS_BROWSER", "True").lower() == "true"
+
+# Cấu hình crawler
+PAGE_LOAD_TIMEOUT = int(os.getenv("PAGE_LOAD_TIMEOUT", 60))  # Thời gian timeout khi tải trang (giây)
+MAX_RETRIES = int(os.getenv("MAX_RETRIES", 3))  # Số lần thử lại tối đa khi gặp lỗi
+
+# Cấu hình OCR
+OCR_MIN_IMAGE_WIDTH = int(os.getenv("OCR_MIN_IMAGE_WIDTH", 100))  # Chiều rộng tối thiểu của hình ảnh để OCR
+OCR_MIN_IMAGE_HEIGHT = int(os.getenv("OCR_MIN_IMAGE_HEIGHT", 100))  # Chiều cao tối thiểu của hình ảnh để OCR
+OCR_MAX_DIMENSION = int(os.getenv("OCR_MAX_DIMENSION", 1600))  # Kích thước tối đa cho một chiều của hình ảnh khi OCR
+
+# Cấu hình checkpoint
+CHECKPOINT_INTERVAL = int(os.getenv("CHECKPOINT_INTERVAL", 5))  # Số thread giữa các lần lưu checkpoint

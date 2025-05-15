@@ -1,21 +1,14 @@
 import time
 import random
-from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.chrome.service import Service
+import logging
+import undetected_chromedriver as uc
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from webdriver_manager.chrome import ChromeDriverManager
-import logging
 
 from config import HEADLESS_BROWSER, REQUEST_DELAY
 
 # Cấu hình logging
-logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
-)
 logger = logging.getLogger(__name__)
 
 class Browser:
@@ -27,29 +20,33 @@ class Browser:
         self.setup_browser()
         
     def setup_browser(self):
-        """Khởi tạo trình duyệt Chrome với Selenium"""
-        chrome_options = Options()
-        
-        # Cấu hình headless mode nếu được chỉ định
-        if HEADLESS_BROWSER:
-            chrome_options.add_argument("--headless")
+        """Khởi tạo trình duyệt Chrome với undetected-chromedriver"""
+        try:
+            # Cấu hình undetected-chromedriver
+            options = uc.ChromeOptions()
             
-        # Các cấu hình khác
-        chrome_options.add_argument("--window-size=1920,1080")
-        chrome_options.add_argument("--disable-notifications")
-        chrome_options.add_argument("--disable-infobars")
-        chrome_options.add_argument("--disable-extensions")
-        chrome_options.add_argument("--disable-gpu")
-        chrome_options.add_argument("--no-sandbox")
-        chrome_options.add_argument("--disable-dev-shm-usage")
-        
-        # Thêm User-Agent giống người dùng thật
-        chrome_options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.212 Safari/537.36")
-        
-        # Khởi tạo WebDriver
-        service = Service(ChromeDriverManager().install())
-        self.driver = webdriver.Chrome(service=service, options=chrome_options)
-        logger.info("Đã khởi tạo trình duyệt Chrome")
+            # Cấu hình headless mode nếu được chỉ định
+            if HEADLESS_BROWSER:
+                options.add_argument("--headless=new")
+                
+            # Các cấu hình khác
+            options.add_argument("--window-size=1920,1080")
+            options.add_argument("--disable-notifications")
+            options.add_argument("--disable-extensions")
+            options.add_argument("--disable-gpu")
+            options.add_argument("--no-sandbox")
+            options.add_argument("--disable-dev-shm-usage")
+            
+            # Thêm User-Agent giống người dùng thật
+            options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+            
+            # Khởi tạo undetected-chromedriver
+            self.driver = uc.Chrome(options=options, suppress_welcome=True)
+            logger.info("Đã khởi tạo trình duyệt Chrome với undetected-chromedriver")
+            
+        except Exception as e:
+            logger.error(f"Lỗi khi khởi tạo trình duyệt: {str(e)}")
+            raise
         
     def get(self, url):
         """Truy cập một URL với delay ngẫu nhiên"""
@@ -95,9 +92,20 @@ class Browser:
     def close(self):
         """Đóng trình duyệt"""
         if self.driver:
-            self.driver.quit()
-            logger.info("Đã đóng trình duyệt")
+            try:
+                # Thêm timeout để tránh lỗi hang khi đóng driver
+                self.driver.quit()
+                logger.info("Đã đóng trình duyệt")
+                self.driver = None
+            except Exception as e:
+                logger.warning(f"Cảnh báo khi đóng trình duyệt: {str(e)}")
+                # Đặt driver = None để tránh lỗi khi đóng lại
+                self.driver = None
             
     def __del__(self):
         """Đảm bảo trình duyệt được đóng khi đối tượng bị hủy"""
-        self.close()
+        try:
+            self.close()
+        except:
+            # Bỏ qua lỗi khi đối tượng bị hủy
+            pass
