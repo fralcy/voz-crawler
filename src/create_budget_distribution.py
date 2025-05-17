@@ -16,7 +16,7 @@ def create_budget_distribution_csv():
     DATA_DIR = Path('data')
     ANALYSIS_DIR = DATA_DIR / "analysis"
     OP_ANALYSIS_DIR = ANALYSIS_DIR / "op_analysis"
-    BUDGET_ANALYSIS_DIR = ANALYSIS_DIR / "bubget_analysis"
+    BUDGET_ANALYSIS_DIR = ANALYSIS_DIR / "budget_analysis"
 
     # Đảm bảo thư mục tồn tại
     BUDGET_ANALYSIS_DIR.mkdir(parents=True, exist_ok=True)

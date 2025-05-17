@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 ANALYSIS_DIR = DATA_DIR / "analysis"
 OP_ANALYSIS_DIR = ANALYSIS_DIR / "op_analysis"
 REPLY_ANALYSIS_DIR = ANALYSIS_DIR / "reply_analysis"
-BUDGET_ANALYSIS_DIR = ANALYSIS_DIR / "bubget_analysis"
+BUDGET_ANALYSIS_DIR = ANALYSIS_DIR / "budget_analysis"
 
 # Đảm bảo thư mục tồn tại
 for dir_path in [ANALYSIS_DIR, OP_ANALYSIS_DIR, REPLY_ANALYSIS_DIR, BUDGET_ANALYSIS_DIR]:
