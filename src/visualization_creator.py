@@ -34,7 +34,24 @@ class VisualizationCreator:
     """
     def __init__(self, analysis_dir=DATA_DIR / "analysis"):
         self.analysis_dir = analysis_dir
+        self.op_analysis_dir = analysis_dir / "op_analysis"
+        self.reply_analysis_dir = analysis_dir / "reply_analysis"
+        self.budget_analysis_dir = analysis_dir / "budget_analysis"
         self.detailed_analysis_dir = analysis_dir / "detailed_analysis"
+        self.network_analysis_dir = analysis_dir / "network_analysis"
+        self.sentiment_analysis_dir = analysis_dir / "sentiment_analysis"
+        
+        # Ensure all directories exist
+        for dir_path in [
+            self.op_analysis_dir,
+            self.reply_analysis_dir,
+            self.budget_analysis_dir,
+            self.detailed_analysis_dir,
+            self.network_analysis_dir,
+            self.sentiment_analysis_dir,
+            VISUALIZATION_DIR
+        ]:
+            dir_path.mkdir(parents=True, exist_ok=True)
         
         # Default figure parameters
         self.default_figsize = (12, 8)
@@ -99,6 +116,8 @@ class VisualizationCreator:
             
         except Exception as e:
             logger.error(f"Error creating budget-component heatmap: {str(e)}")
+            import traceback
+            logger.error(traceback.format_exc())
             return None
     
     def create_component_trend_chart(self):
@@ -183,27 +202,35 @@ class VisualizationCreator:
             
         except Exception as e:
             logger.error(f"Error creating component trend chart: {str(e)}")
+            import traceback
+            logger.error(traceback.format_exc())
             return None
     
     def create_user_network_visualization(self):
         """Create an enhanced visualization of the user interaction network"""
         try:
             # Load data
-            network_file = self.detailed_analysis_dir / "user_degree_centrality.csv"
+            network_file = self.network_analysis_dir / "user_degree_centrality.csv"
             if not network_file.exists():
-                logger.warning(f"File not found: {network_file}")
-                return None
-                
+                # Try alternative location if file not found
+                network_file = self.detailed_analysis_dir / "user_degree_centrality.csv"
+                if not network_file.exists():
+                    logger.warning(f"User network data not found in any expected location")
+                    return None
+                    
             user_centrality = pd.read_csv(network_file)
             
             # Load betweenness centrality for additional information
-            betweenness_file = self.detailed_analysis_dir / "user_betweenness_centrality.csv"
+            betweenness_file = self.network_analysis_dir / "user_betweenness_centrality.csv"
+            if not betweenness_file.exists():
+                betweenness_file = self.detailed_analysis_dir / "user_betweenness_centrality.csv"
+                
             betweenness_data = None
             if betweenness_file.exists():
                 betweenness_data = pd.read_csv(betweenness_file)
             
             # Create a simplified network visualization focusing on top users
-            top_n = 30  # Top users to include
+            top_n = min(30, len(user_centrality))  # Top users to include, but limit to data available
             top_users = user_centrality['username'].head(top_n).tolist()
             
             # Create a simple example network (for demonstration purposes)
@@ -214,7 +241,6 @@ class VisualizationCreator:
                 G.add_node(user)
             
             # Add some edges (In a real implementation, this would come from actual data)
-            # This is a placeholder - in practice, you would get edges from the actual analysis data
             for i in range(len(top_users) - 1):
                 G.add_edge(top_users[i], top_users[i+1])
                 # Add some cross-connections
@@ -275,10 +301,12 @@ class VisualizationCreator:
             
         except Exception as e:
             logger.error(f"Error creating user network visualization: {str(e)}")
+            import traceback
+            logger.error(traceback.format_exc())
             return None
     
-    def create_component_wordcloud(self):
-        """Create wordclouds for component suggestions"""
+    def create_component_keyword_charts(self):
+        """Create bar charts for component keywords instead of wordclouds"""
         try:
             # Load data
             file_path = self.analysis_dir / "component_suggestions.csv"
@@ -288,7 +316,7 @@ class VisualizationCreator:
                 
             data = pd.read_csv(file_path)
             
-            # Create separate wordclouds for major component types
+            # Create separate bar charts for major component types
             component_types = ['cpu', 'gpu', 'ram', 'ssd', 'mainboard', 'psu']
             
             for component in component_types:
@@ -296,49 +324,95 @@ class VisualizationCreator:
                 component_data = data[data['component_type'] == component]
                 
                 if len(component_data) < 10:
+                    logger.info(f"Skipping keyword chart for {component}: not enough data")
                     continue
                 
-                # Combine all contexts
-                text = ' '.join(component_data['context'].dropna().tolist())
+                # Count keyword frequencies
+                keyword_counts = component_data['keyword'].value_counts().reset_index()
+                keyword_counts.columns = ['keyword', 'count']
                 
-                # Generate wordcloud
-                wordcloud = WordCloud(
-                    width=1000, 
-                    height=600,
-                    background_color='white',
-                    colormap='viridis',
-                    max_words=100,
-                    contour_width=1,
-                    contour_color='steelblue'
-                ).generate(text)
+                # Take top 15 keywords
+                top_keywords = keyword_counts.head(15)
+                
+                # Sort by count for better visualization
+                top_keywords = top_keywords.sort_values('count')
                 
                 # Create figure
-                plt.figure(figsize=(16, 10), dpi=self.default_dpi)
-                plt.imshow(wordcloud, interpolation='bilinear')
-                plt.title(f'{component.upper()} Component Suggestions - Word Cloud', 
-                          fontsize=self.title_fontsize, pad=20)
-                plt.axis('off')
+                plt.figure(figsize=(12, 8), dpi=self.default_dpi)
+                
+                # Create horizontal bar chart
+                bars = plt.barh(
+                    top_keywords['keyword'],
+                    top_keywords['count'],
+                    color=sns.color_palette("viridis", len(top_keywords)),
+                    alpha=0.8
+                )
+                
+                # Add count labels
+                for bar in bars:
+                    width = bar.get_width()
+                    plt.text(
+                        width + 0.5,
+                        bar.get_y() + bar.get_height()/2,
+                        f'{int(width)}',
+                        va='center',
+                        fontweight='bold'
+                    )
+                
+                # Add percentage labels inside bars
+                total = top_keywords['count'].sum()
+                for bar in bars:
+                    width = bar.get_width()
+                    percentage = width / total * 100
+                    if percentage > 5:  # Only show percentage for significant values
+                        plt.text(
+                            width/2,
+                            bar.get_y() + bar.get_height()/2,
+                            f'{percentage:.1f}%',
+                            va='center',
+                            ha='center',
+                            color='white',
+                            fontweight='bold'
+                        )
+                
+                # Style improvements
+                plt.title(f'Top {component.upper()} Keywords in Component Suggestions', 
+                         fontsize=self.title_fontsize, pad=20)
+                plt.xlabel('Count', fontsize=self.label_fontsize)
+                plt.ylabel('Keyword', fontsize=self.label_fontsize)
+                plt.grid(axis='x', linestyle='--', alpha=0.7)
+                
                 plt.tight_layout()
-                plt.savefig(VISUALIZATION_DIR / f"{component}_wordcloud.png")
+                plt.savefig(VISUALIZATION_DIR / f"{component}_keywords_chart.png")
                 plt.close()
             
-            logger.info("Created component wordclouds")
+            logger.info("Created component keyword bar charts")
             return True
             
         except Exception as e:
-            logger.error(f"Error creating component wordclouds: {str(e)}")
+            logger.error(f"Error creating component keyword charts: {str(e)}")
+            import traceback
+            logger.error(traceback.format_exc())
             return None
     
     def create_budget_distribution_visualization(self):
         """Create an enhanced visualization of budget distribution"""
         try:
-            # Load data
-            file_path = self.analysis_dir / "budget_distribution.csv"
+            # Load budget distribution data
+            file_path = self.budget_analysis_dir / "budget_distribution.csv"
             if not file_path.exists():
-                logger.warning(f"File not found: {file_path}")
+                logger.warning(f"Budget distribution file not found: {file_path}")
                 return None
                 
             data = pd.read_csv(file_path)
+            
+            # Load detailed budget data
+            detail_path = self.budget_analysis_dir / "budget_detailed.csv"
+            if not detail_path.exists():
+                logger.warning(f"Detailed budget file not found: {detail_path}")
+                return None
+                
+            budget_details = pd.read_csv(detail_path)
             
             # Create figure
             plt.figure(figsize=(14, 10), dpi=self.default_dpi)
@@ -346,7 +420,7 @@ class VisualizationCreator:
             # Main histogram
             ax1 = plt.subplot(2, 1, 1)
             sns.histplot(
-                data=data,
+                data=budget_details,
                 x="budget",
                 bins=20,
                 kde=True,
@@ -360,9 +434,9 @@ class VisualizationCreator:
             ax1.set_ylabel('Count', fontsize=self.label_fontsize)
             
             # Add major budget points annotation
-            median = data['budget'].median()
-            mean = data['budget'].mean()
-            mode = data['budget'].mode().iloc[0]
+            median = budget_details['budget'].median()
+            mean = budget_details['budget'].mean()
+            mode = budget_details['budget'].mode().iloc[0]
             
             ax1.axvline(median, color='red', linestyle='--', linewidth=2, alpha=0.7)
             ax1.axvline(mean, color='green', linestyle='--', linewidth=2, alpha=0.7)
@@ -389,22 +463,12 @@ class VisualizationCreator:
                         weight='bold',
                         ha='center')
             
-            # Create budget ranges for bar chart
-            budget_ranges = [(0, 10), (10, 15), (15, 20), (20, 25), (25, 30), (30, 40), (40, 50), (50, 100)]
-            budget_labels = ['<10tr', '10-15tr', '15-20tr', '20-25tr', '25-30tr', '30-40tr', '40-50tr', '50tr+']
-            
-            # Count threads in each range
-            range_counts = []
-            for min_val, max_val in budget_ranges:
-                count = len(data[(data['budget'] >= min_val) & (data['budget'] < max_val)])
-                range_counts.append(count)
-            
-            # Create bar chart
+            # Create bar chart of budget ranges
             ax2 = plt.subplot(2, 1, 2)
-            bars = ax2.bar(budget_labels, range_counts, color=self.budget_cmap, alpha=0.8)
+            bars = ax2.bar(data['range'], data['count'], color=self.budget_cmap, alpha=0.8)
             
             # Add value labels on top of bars
-            for bar, count in zip(bars, range_counts):
+            for bar, count in zip(bars, data['count']):
                 height = bar.get_height()
                 ax2.text(
                     bar.get_x() + bar.get_width()/2., 
@@ -421,10 +485,10 @@ class VisualizationCreator:
             ax2.set_ylabel('Count', fontsize=self.label_fontsize)
             
             # Add percentage annotations
-            total = sum(range_counts)
+            total = data['count'].sum()
             percentage_positions = [bar.get_height() / 2 for bar in bars]
             
-            for i, (count, position) in enumerate(zip(range_counts, percentage_positions)):
+            for i, (count, position) in enumerate(zip(data['count'], percentage_positions)):
                 percentage = count / total * 100
                 ax2.text(
                     bars[i].get_x() + bars[i].get_width()/2., 
@@ -446,17 +510,196 @@ class VisualizationCreator:
             
         except Exception as e:
             logger.error(f"Error creating budget distribution visualization: {str(e)}")
+            import traceback
+            logger.error(traceback.format_exc())
+            return None
+    
+    def create_sentiment_analysis_visualization(self):
+        """Create visualizations for sentiment analysis results"""
+        try:
+            # Load sentiment data
+            file_path = self.sentiment_analysis_dir / "component_sentiment.csv"
+            if not file_path.exists():
+                # Try alternative location
+                file_path = self.detailed_analysis_dir / "component_sentiment.csv"
+                if not file_path.exists():
+                    logger.warning(f"Sentiment data not found in any expected location")
+                    return None
+                
+            sentiment_data = pd.read_csv(file_path)
+            
+            # Create visualization for sentiment distribution
+            plt.figure(figsize=(12, 8), dpi=self.default_dpi)
+            
+            # Create sentiment distribution plot
+            sns.histplot(
+                sentiment_data['sentiment_score'],
+                bins=30,
+                kde=True,
+                color='steelblue'
+            )
+            
+            # Add vertical lines for sentiment categories
+            plt.axvline(x=0.1, color='green', linestyle='--', alpha=0.7, label='Positive threshold')
+            plt.axvline(x=-0.1, color='red', linestyle='--', alpha=0.7, label='Negative threshold')
+            plt.axvline(x=0, color='gray', linestyle='-', alpha=0.5, label='Neutral')
+            
+            # Add styling
+            plt.title('Distribution of Sentiment Scores in Component Mentions', fontsize=self.title_fontsize, pad=20)
+            plt.xlabel('Sentiment Score', fontsize=self.label_fontsize)
+            plt.ylabel('Count', fontsize=self.label_fontsize)
+            plt.grid(True, linestyle='--', alpha=0.7)
+            plt.legend()
+            
+            # Save the visualization
+            plt.tight_layout()
+            plt.savefig(VISUALIZATION_DIR / "sentiment_distribution.png")
+            plt.close()
+            
+            # Create component-wise sentiment visualization if possible
+            try:
+                if 'component_type' in sentiment_data.columns:
+                    # Group by component type and calculate average sentiment
+                    component_sentiment = sentiment_data.groupby('component_type')['sentiment_score'].agg(['mean', 'count']).reset_index()
+                    component_sentiment = component_sentiment.sort_values('mean')
+                    
+                    # Only proceed if we have enough components
+                    if len(component_sentiment) >= 3:
+                        plt.figure(figsize=(12, 8), dpi=self.default_dpi)
+                        
+                        # Create horizontal bar chart
+                        bars = plt.barh(
+                            component_sentiment['component_type'],
+                            component_sentiment['mean'],
+                            color=[
+                                'red' if x < -0.1 else 'green' if x > 0.1 else 'gray'
+                                for x in component_sentiment['mean']
+                            ],
+                            alpha=0.7
+                        )
+                        
+                        # Add count annotations
+                        for i, (_, row) in enumerate(component_sentiment.iterrows()):
+                            plt.text(
+                                row['mean'] + 0.01 * (1 if row['mean'] >= 0 else -1),
+                                i,
+                                f"n={int(row['count'])}",
+                                va='center',
+                                fontsize=10,
+                                fontweight='bold'
+                            )
+                        
+                        # Add styling
+                        plt.axvline(x=0, color='gray', linestyle='-', alpha=0.5)
+                        plt.title('Average Sentiment Score by Component Type', fontsize=self.title_fontsize, pad=20)
+                        plt.xlabel('Average Sentiment Score', fontsize=self.label_fontsize)
+                        plt.ylabel('Component Type', fontsize=self.label_fontsize)
+                        plt.grid(True, linestyle='--', alpha=0.7)
+                        
+                        # Save the visualization
+                        plt.tight_layout()
+                        plt.savefig(VISUALIZATION_DIR / "component_sentiment.png")
+                        plt.close()
+            except Exception as e:
+                logger.error(f"Error creating component sentiment chart: {str(e)}")
+            
+            logger.info("Created sentiment analysis visualizations")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error creating sentiment analysis visualization: {str(e)}")
+            import traceback
+            logger.error(traceback.format_exc())
+            return None
+    
+    def create_purpose_distribution_visualization(self):
+        """Create visualization for purpose distribution"""
+        try:
+            # Load purpose distribution data
+            file_path = self.op_analysis_dir / "purpose_distribution.csv"
+            if not file_path.exists():
+                logger.warning(f"Purpose distribution file not found: {file_path}")
+                return None
+                
+            data = pd.read_csv(file_path)
+            
+            # Sort by count
+            data = data.sort_values('count', ascending=False)
+            
+            # Create figure
+            plt.figure(figsize=(12, 8), dpi=self.default_dpi)
+            
+            # Create bar chart with enhanced styling
+            bars = plt.bar(
+                data['purpose'],
+                data['count'],
+                color=sns.color_palette("viridis", len(data)),
+                alpha=0.8
+            )
+            
+            # Add value labels on top of bars
+            for bar, count in zip(bars, data['count']):
+                height = bar.get_height()
+                plt.text(
+                    bar.get_x() + bar.get_width()/2., 
+                    height + 0.5, 
+                    f'{count}',
+                    ha='center', 
+                    va='bottom',
+                    fontsize=10,
+                    fontweight='bold'
+                )
+            
+            # Add percentage inside bars
+            total = data['count'].sum()
+            for i, (bar, count) in enumerate(zip(bars, data['count'])):
+                percentage = count / total * 100
+                plt.text(
+                    bar.get_x() + bar.get_width()/2., 
+                    bar.get_height() / 2, 
+                    f'{percentage:.1f}%', 
+                    ha='center', 
+                    va='center',
+                    fontsize=12,
+                    fontweight='bold', 
+                    color='white'
+                )
+            
+            # Style improvements
+            plt.title('Distribution of Usage Purposes', fontsize=self.title_fontsize, pad=20)
+            plt.xlabel('Purpose', fontsize=self.label_fontsize)
+            plt.ylabel('Count', fontsize=self.label_fontsize)
+            plt.xticks(rotation=45, ha='right', fontsize=self.tick_fontsize)
+            plt.yticks(fontsize=self.tick_fontsize)
+            plt.grid(axis='y', linestyle='--', alpha=0.7)
+            
+            plt.tight_layout()
+            plt.savefig(VISUALIZATION_DIR / "purpose_distribution.png")
+            plt.close()
+            
+            logger.info("Created purpose distribution visualization")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error creating purpose distribution visualization: {str(e)}")
+            import traceback
+            logger.error(traceback.format_exc())
             return None
     
     def create_all_visualizations(self):
         """Create all enhanced visualizations"""
         logger.info("Creating all enhanced visualizations...")
         
+        # Budget and component visualizations
+        self.create_budget_distribution_visualization()
         self.create_budget_component_heatmap()
         self.create_component_trend_chart()
+        self.create_component_keyword_charts()  # Use bar charts instead of wordcloud
+        
+        # User and sentiment visualizations
         self.create_user_network_visualization()
-        self.create_component_wordcloud()
-        self.create_budget_distribution_visualization()
+        self.create_sentiment_analysis_visualization()
+        self.create_purpose_distribution_visualization()
         
         logger.info("Completed creating all enhanced visualizations")
         return True
