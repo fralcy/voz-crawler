@@ -41,124 +41,105 @@ class ImageProcessor:
             self.reader = easyocr.Reader(['vi', 'en'], gpu=False)
             logger.info("Đã khởi tạo EasyOCR thành công")
         
-    def process_image(self, image_url, use_cache=True):
+    def process_image(self, image_url, use_cache=True, max_retries=1):
         """
         Xử lý OCR cho một hình ảnh
-        
+
         Args:
             image_url (str): URL của hình ảnh
             use_cache (bool): Sử dụng cache nếu có
-            
+            max_retries (int): Số lần thử lại khi tải ảnh thất bại
+
         Returns:
             str: Văn bản đã trích xuất từ hình ảnh
         """
-        try:
-            # Tạo tên file cache từ URL
-            url_hash = hashlib.md5(image_url.encode()).hexdigest()
-            cache_file = IMAGE_CACHE_DIR / f"{url_hash}.json"
-            
-            # Kiểm tra cache
-            if use_cache and cache_file.exists():
-                logger.info(f"Sử dụng cache cho hình ảnh: {image_url}")
-                try:
-                    with open(cache_file, 'r', encoding='utf-8') as f:
-                        cache_data = json.load(f)
-                        return cache_data.get('ocr_text', '')
-                except Exception as e:
-                    logger.error(f"Lỗi khi đọc cache: {str(e)}")
-            
-            # Khởi tạo OCR nếu cần
-            self._initialize_ocr()
-            
-            # Tải hình ảnh
-            logger.info(f"Đang tải hình ảnh: {image_url}")
-            response = requests.get(image_url, stream=True, timeout=10)
-            # Kiểm tra cả 200 (OK) và 304 (Not Modified) là các status thành công
-            if response.status_code not in [200, 304]:
-                logger.error(f"Không thể tải hình ảnh, mã trạng thái: {response.status_code}")
-                return None
-            
-            # Mở hình ảnh bằng PIL
-            img = Image.open(BytesIO(response.content))
-            
-            # Kiểm tra kích thước hình ảnh
-            width, height = img.size
-            if width < 50 or height < 50:
-                logger.info(f"Hình ảnh quá nhỏ ({width}x{height}), bỏ qua OCR")
-                # Lưu thông tin vào cache để không phải tải lại
-                cache_data = {
-                    'image_url': image_url,
-                    'ocr_date': time.strftime("%Y-%m-%dT%H:%M:%SZ"),
-                    'ocr_text': '',
-                    'reason': 'image_too_small'
-                }
-                with open(cache_file, 'w', encoding='utf-8') as f:
-                    json.dump(cache_data, f, ensure_ascii=False, indent=2)
-                return ""
-                
-            # Kiểm tra nếu là avatar hoặc icon (thường là hình vuông nhỏ)
-            if width < 100 and height < 100 and abs(width - height) < 10:
-                logger.info(f"Hình ảnh có thể là avatar/icon ({width}x{height}), bỏ qua OCR")
-                # Lưu thông tin vào cache để không phải tải lại
-                cache_data = {
-                    'image_url': image_url,
-                    'ocr_date': time.strftime("%Y-%m-%dT%H:%M:%SZ"),
-                    'ocr_text': '',
-                    'reason': 'likely_avatar'
-                }
-                with open(cache_file, 'w', encoding='utf-8') as f:
-                    json.dump(cache_data, f, ensure_ascii=False, indent=2)
-                return ""
-            
-            # Resize hình ảnh nếu quá lớn để tăng tốc OCR
-            max_dimension = 1600
-            if width > max_dimension or height > max_dimension:
-                scale = max_dimension / max(width, height)
-                new_width = int(width * scale)
-                new_height = int(height * scale)
-                img = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
-                logger.info(f"Đã resize hình ảnh từ {width}x{height} xuống {new_width}x{new_height}")
-            
-            # Xử lý OCR
+        for attempt in range(max_retries):
             try:
-                logger.info(f"Đang xử lý OCR cho hình ảnh...")
-                result = self.reader.readtext(
-                    numpy_image=self._pil_to_numpy(img),
-                    detail=0  # Chỉ trả về văn bản, không có bounding box
-                )
+                # Tạo tên file cache từ URL
+                url_hash = hashlib.md5(image_url.encode()).hexdigest()
+                cache_file = IMAGE_CACHE_DIR / f"{url_hash}.json"
                 
-                # Ghép các đoạn văn bản
-                ocr_text = "\n".join(result)
+                # Kiểm tra cache
+                if use_cache and cache_file.exists():
+                    logger.info(f"Sử dụng cache cho hình ảnh: {image_url}")
+                    try:
+                        with open(cache_file, 'r', encoding='utf-8') as f:
+                            cache_data = json.load(f)
+                            return cache_data.get('ocr_text', '')
+                    except Exception as e:
+                        logger.error(f"Lỗi khi đọc cache: {str(e)}")
                 
-                # Lưu kết quả vào cache
-                cache_data = {
-                    'image_url': image_url,
-                    'ocr_date': time.strftime("%Y-%m-%dT%H:%M:%SZ"),
-                    'ocr_text': ocr_text,
-                    'image_size': {'width': width, 'height': height}
-                }
+                # Khởi tạo OCR nếu cần
+                self._initialize_ocr()
                 
-                with open(cache_file, 'w', encoding='utf-8') as f:
-                    json.dump(cache_data, f, ensure_ascii=False, indent=2)
+                # Tải hình ảnh
+                logger.info(f"Đang tải hình ảnh: {image_url}")
+                response = requests.get(image_url, stream=True, timeout=10)
+                # Kiểm tra cả 200 (OK) và 304 (Not Modified) là các status thành công
+                if response.status_code not in [200, 304]:
+                    logger.error(f"Không thể tải hình ảnh, mã trạng thái: {response.status_code}")
+                    return None
                 
-                logger.info(f"Đã xử lý OCR và lưu cache cho hình ảnh: {len(ocr_text)} ký tự")
-                return ocr_text
+                # Mở hình ảnh bằng PIL
+                img = Image.open(BytesIO(response.content))
+                
+                # Kiểm tra kích thước hình ảnh
+                width, height = img.size
+                if width < 100 or height < 100:
+                    logger.info(f"Hình ảnh quá nhỏ, có thể là avatar/icon ({width}x{height}), bỏ qua OCR")
+                    return ""
+                                    
+                # Resize hình ảnh nếu quá lớn để tăng tốc OCR
+                max_dimension = 1600
+                if width > max_dimension or height > max_dimension:
+                    scale = max_dimension / max(width, height)
+                    new_width = int(width * scale)
+                    new_height = int(height * scale)
+                    img = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
+                    logger.info(f"Đã resize hình ảnh từ {width}x{height} xuống {new_width}x{new_height}")
+                
+                # Xử lý OCR
+                try:
+                    logger.info(f"Đang xử lý OCR cho hình ảnh...")
+                    result = self.reader.readtext(
+                        numpy_image=self._pil_to_numpy(img),
+                        detail=0  # Chỉ trả về văn bản, không có bounding box
+                    )
+                    
+                    # Ghép các đoạn văn bản
+                    ocr_text = "\n".join(result)
+                    
+                    # Lưu kết quả vào cache
+                    cache_data = {
+                        'image_url': image_url,
+                        'ocr_date': time.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                        'ocr_text': ocr_text,
+                        'image_size': {'width': width, 'height': height}
+                    }
+                    
+                    with open(cache_file, 'w', encoding='utf-8') as f:
+                        json.dump(cache_data, f, ensure_ascii=False, indent=2)
+                    
+                    logger.info(f"Đã xử lý OCR và lưu cache cho hình ảnh: {len(ocr_text)} ký tự")
+                    return ocr_text
+                except Exception as e:
+                    logger.error(f"Lỗi khi xử lý OCR: {str(e)}")
+                    # Lưu lỗi vào cache để không thử lại liên tục
+                    cache_data = {
+                        'image_url': image_url,
+                        'ocr_date': time.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                        'ocr_text': '',
+                        'error': str(e)
+                    }
+                    with open(cache_file, 'w', encoding='utf-8') as f:
+                        json.dump(cache_data, f, ensure_ascii=False, indent=2)
+                    return None
+                
             except Exception as e:
-                logger.error(f"Lỗi khi xử lý OCR: {str(e)}")
-                # Lưu lỗi vào cache để không thử lại liên tục
-                cache_data = {
-                    'image_url': image_url,
-                    'ocr_date': time.strftime("%Y-%m-%dT%H:%M:%SZ"),
-                    'ocr_text': '',
-                    'error': str(e)
-                }
-                with open(cache_file, 'w', encoding='utf-8') as f:
-                    json.dump(cache_data, f, ensure_ascii=False, indent=2)
-                return None
-                
-        except Exception as e:
-            logger.error(f"Lỗi khi xử lý OCR cho hình ảnh {image_url}: {str(e)}")
-            return None
+                logger.error(f"Lỗi khi xử lý ảnh (attempt {attempt+1}/{max_retries}): {str(e)}")
+                if attempt == max_retries - 1:
+                    return None
+                time.sleep(1)  # Đợi 1s trước khi thử lại
     
     def _pil_to_numpy(self, pil_image):
         """Chuyển đổi hình ảnh PIL sang numpy array để EasyOCR có thể xử lý"""

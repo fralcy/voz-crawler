@@ -1,34 +1,3 @@
-import os
-import logging
-import argparse
-from pathlib import Path
-import time
-import sys
-
-from data_preprocessor import DataPreprocessor
-from data_analyzer import DataAnalyzer
-from op_analyzer import OPAnalyzer
-from reply_analyzer import ReplyAnalyzer
-
-# Cấu hình logging
-logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
-)
-logger = logging.getLogger(__name__)
-
-def create_analysis_datasets():
-    """Tạo dataset phân tích từ dữ liệu đã crawl"""
-    start_time = time.time()
-    
-    logger.info("=== Bắt đầu quá trình tạo dataset phân tích ===")
-    
-    # Bước 1: Tiền xử lý dữ liệu
-    logger.info("Bước 1: Tiền xử lý dữ liệu")
-    preprocessor = DataPreprocessor()
-    preprocessor.run_preprocessing()
-    
-    # Bước 2: Phân tíchimport os
 import logging
 import argparse
 from pathlib import Path

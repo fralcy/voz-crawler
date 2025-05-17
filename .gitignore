@@ -27,6 +27,7 @@ data/
 cache/
 logs/
 output/
+checkpoint.json
 
 # Môi trường
 .env

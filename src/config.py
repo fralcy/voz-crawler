@@ -19,7 +19,7 @@ IMAGE_CACHE_DIR = CACHE_DIR / "images"
 
 # Data directories
 RAW_DATA_DIR = DATA_DIR / "raw"
-PROCESSED_DATA_DIR = DATA_DIR / "processed"
+PROCESSED_DATA_DIR = DATA_DIR / "ocr-processed"
 
 # Tạo các thư mục nếu chưa tồn tại
 for dir_path in [CACHE_DIR, DATA_DIR, LOG_DIR, THREAD_CACHE_DIR, 
