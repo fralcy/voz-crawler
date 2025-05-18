@@ -685,6 +685,187 @@ class VisualizationCreator:
             import traceback
             logger.error(traceback.format_exc())
             return None
+    def create_purpose_analysis_visualizations(self):
+        """Tạo các biểu đồ phân tích mục đích sử dụng"""
+        try:
+            # Tìm file purpose_distribution.csv trong nhiều vị trí có thể có
+            potential_paths = [
+                self.op_analysis_dir / "purpose_distribution.csv",
+                self.analysis_dir / "purpose_distribution.csv",
+                self.detailed_analysis_dir / "purpose_distribution.csv"
+            ]
+            
+            purpose_file = None
+            for path in potential_paths:
+                if path.exists():
+                    purpose_file = path
+                    break
+                    
+            if purpose_file is None:
+                logger.warning("Không tìm thấy file purpose_distribution.csv")
+                return None
+                
+            # Đọc dữ liệu
+            purpose_data = pd.read_csv(purpose_file)
+            
+            if purpose_data.empty:
+                logger.warning("File purpose_distribution.csv không có dữ liệu")
+                return None
+            
+            # 1. Biểu đồ phân bố mục đích sử dụng (đã cải tiến)
+            # ------------------------------------------------
+            # Sắp xếp theo số lượng giảm dần
+            purpose_data = purpose_data.sort_values('count', ascending=False)
+            
+            # Tạo biểu đồ dạng cột (ngang)
+            plt.figure(figsize=(14, 10), dpi=self.default_dpi)
+            
+            # Biểu đồ cột với màu sắc gradient
+            colors = sns.color_palette("viridis", len(purpose_data))
+            bars = plt.barh(purpose_data['purpose'], purpose_data['count'], color=colors)
+            
+            # Thêm số lượng và phần trăm vào biểu đồ
+            total = purpose_data['count'].sum()
+            
+            for i, bar in enumerate(bars):
+                count = purpose_data['count'].iloc[i]
+                percent = 100 * count / total
+                
+                # Số lượng (bên phải cột)
+                plt.text(
+                    bar.get_width() + 1, 
+                    bar.get_y() + bar.get_height()/2,
+                    f"{count} ({percent:.1f}%)",
+                    va='center',
+                    fontweight='bold'
+                )
+                
+                # Thêm nhãn trong cột nếu có đủ không gian
+                if bar.get_width() > 5:
+                    plt.text(
+                        bar.get_width()/2,
+                        bar.get_y() + bar.get_height()/2,
+                        purpose_data['purpose'].iloc[i],
+                        va='center',
+                        ha='center',
+                        color='white',
+                        fontweight='bold'
+                    )
+            
+            # Định dạng và nhãn
+            plt.title('Phân bố mục đích sử dụng máy tính', fontsize=self.title_fontsize, pad=20)
+            plt.xlabel('Số lượng', fontsize=self.label_fontsize)
+            # Không hiển thị nhãn y vì đã hiển thị tên trong cột
+            plt.ylabel('')
+            plt.yticks([])
+            plt.grid(axis='x', linestyle='--', alpha=0.7)
+            
+            # Lưu biểu đồ
+            plt.tight_layout()
+            plt.savefig(VISUALIZATION_DIR / "purpose_distribution_horizontal.png")
+            plt.close()
+            
+            # 2. Biểu đồ tròn phân bố mục đích sử dụng
+            # ----------------------------------------
+            plt.figure(figsize=(12, 10), dpi=self.default_dpi)
+            
+            # Tính toán phần trăm cho mỗi mục đích
+            purpose_data['percentage'] = 100 * purpose_data['count'] / total
+            
+            # Nhóm các mục đích nhỏ (dưới 5%) vào "Others"
+            threshold = 5  # phần trăm
+            small_purposes = purpose_data[purpose_data['percentage'] < threshold]
+            large_purposes = purpose_data[purpose_data['percentage'] >= threshold]
+            
+            # Tạo danh mục "Others" nếu cần
+            if not small_purposes.empty:
+                others = {
+                    'purpose': 'Others',
+                    'count': small_purposes['count'].sum(),
+                    'percentage': small_purposes['percentage'].sum()
+                }
+                # Thêm "Others" vào danh sách các mục đích lớn
+                large_purposes = pd.concat([large_purposes, pd.DataFrame([others])])
+            
+            # Tạo biểu đồ tròn
+            wedges, texts, autotexts = plt.pie(
+                large_purposes['count'],
+                labels=large_purposes['purpose'],
+                autopct='%1.1f%%',
+                startangle=90,
+                shadow=False,
+                colors=sns.color_palette("viridis", len(large_purposes)),
+                wedgeprops={'edgecolor': 'white', 'linewidth': 1},
+                textprops={'fontsize': 12, 'fontweight': 'bold'}
+            )
+            
+            # Định dạng phần trăm bên trong biểu đồ
+            for autotext in autotexts:
+                autotext.set_fontsize(10)
+                autotext.set_fontweight('bold')
+                autotext.set_color('white')
+            
+            # Thêm tiêu đề và legend
+            plt.title('Phân bố mục đích sử dụng máy tính (%)', fontsize=self.title_fontsize, pad=20)
+            plt.legend(
+                loc='upper right',
+                bbox_to_anchor=(1.15, 1.0),
+                fontsize=10
+            )
+            
+            # Lưu biểu đồ
+            plt.tight_layout()
+            plt.savefig(VISUALIZATION_DIR / "purpose_distribution_pie.png")
+            plt.close()
+            
+            # 3. Biểu đồ kết hợp mục đích và ngân sách
+            # ---------------------------------------
+            # Tìm file kết hợp purpose-budget nếu có
+            budget_purpose_file = self.detailed_analysis_dir / "budget_purpose_correlation.csv"
+            
+            if budget_purpose_file.exists():
+                try:
+                    # Đọc dữ liệu
+                    budget_purpose_data = pd.read_csv(budget_purpose_file, index_col=0)
+                    
+                    if not budget_purpose_data.empty:
+                        plt.figure(figsize=(14, 8), dpi=self.default_dpi)
+                        
+                        # Tạo heatmap
+                        ax = sns.heatmap(
+                            budget_purpose_data,
+                            annot=True,
+                            fmt=".1f",
+                            cmap="YlGnBu",
+                            linewidths=0.5,
+                            linecolor='white',
+                            cbar_kws={'label': 'Tỉ lệ (%)'}
+                        )
+                        
+                        # Định dạng biểu đồ
+                        plt.title('Phân bố mục đích sử dụng theo ngân sách', fontsize=self.title_fontsize, pad=20)
+                        plt.ylabel('Khoảng ngân sách', fontsize=self.label_fontsize)
+                        plt.xlabel('Mục đích sử dụng', fontsize=self.label_fontsize)
+                        
+                        # Xoay các nhãn để dễ đọc hơn
+                        plt.xticks(rotation=45, ha='right')
+                        plt.yticks(rotation=0)
+                        
+                        # Lưu biểu đồ
+                        plt.tight_layout()
+                        plt.savefig(VISUALIZATION_DIR / "budget_purpose_heatmap.png")
+                        plt.close()
+                except Exception as e:
+                    logger.error(f"Lỗi khi tạo biểu đồ kết hợp mục đích-ngân sách: {str(e)}")
+            
+            logger.info("Đã tạo biểu đồ phân tích mục đích sử dụng")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Lỗi khi tạo biểu đồ phân tích mục đích sử dụng: {str(e)}")
+            import traceback
+            logger.error(traceback.format_exc())
+            return None
     
     def create_all_visualizations(self):
         """Create all enhanced visualizations"""
@@ -695,6 +876,7 @@ class VisualizationCreator:
         self.create_budget_component_heatmap()
         self.create_component_trend_chart()
         self.create_component_keyword_charts()  # Use bar charts instead of wordcloud
+        self.create_purpose_analysis_visualizations()
         
         # User and sentiment visualizations
         self.create_user_network_visualization()

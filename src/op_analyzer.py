@@ -402,6 +402,40 @@ class OPAnalyzer:
         except Exception as e:
             logger.error(f"Lỗi khi tạo CSV cho phân tích OP: {str(e)}")
             return False
+        
+    def create_purpose_distribution_file(self):
+        """Tạo file phân tích phân bố mục đích sử dụng từ dữ liệu đã phân tích"""
+        if not self.op_analysis:
+            if not self.run_analysis():
+                logger.error("Không thể tạo file purpose_distribution.csv: không có dữ liệu phân tích OP")
+                return False
+        
+        try:
+            # Đếm số lượng mỗi mục đích
+            purpose_counter = Counter()
+            for op in self.op_analysis:
+                for purpose in op.get('purposes', []):
+                    purpose_counter[purpose] += 1
+            
+            # Tạo danh sách hàng cho DataFrame
+            purpose_rows = [{'purpose': purpose, 'count': count} 
+                            for purpose, count in purpose_counter.most_common()]
+            
+            # Tạo DataFrame
+            purpose_df = pd.DataFrame(purpose_rows)
+            
+            # Thư mục đầu ra
+            output_file = OP_ANALYSIS_DIR / "purpose_distribution.csv"
+            
+            # Lưu vào CSV
+            purpose_df.to_csv(output_file, index=False)
+            
+            logger.info(f"Đã tạo file purpose_distribution.csv với {len(purpose_rows)} mục đích sử dụng")
+            return True
+        
+        except Exception as e:
+            logger.error(f"Lỗi khi tạo file purpose_distribution.csv: {str(e)}")
+            return False
     
     def run_analysis(self):
         """Chạy toàn bộ quá trình phân tích OP"""
@@ -409,6 +443,7 @@ class OPAnalyzer:
         self.analyze_all_ops()
         self.save_op_analysis()
         
+        self.create_purpose_distribution_file()
         return self.op_analysis
 
 
